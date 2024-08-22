@@ -1,0 +1,12 @@
+#!/bin/sh
+
+cmake -G Ninja .. \
+    -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+    -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
+    -DCMAKE_CUDA_COMPILER=/usr/local/cuda-11.8/bin/nvcc \
+    -DCMAKE_CUDA_FLAGS="-lineinfo" \
+    -DUSE_NVTX=ON \
+    -DFETCHCONTENT_UPDATES_DISCONNECTED=ON \
+    -DLMDEPLOY_ASAN_ENABLE=OFF \
+    -DLMDEPLOY_UBSAN_ENABLE=OFF \
+    -DCMAKE_CUDA_ARCHITECTURES="80-real"
