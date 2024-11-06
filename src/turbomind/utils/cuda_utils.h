@@ -416,11 +416,11 @@ void compareTwoTensor(
     for (int i = 0; i < size; i++) {
         if (i < print_size) {
             printf("%4d | % 6.4f | % 6.4f | % 6.4f | % 7.4f |",
-                        i,
-                        (float)h_pred[i],
-                        (float)h_ref[i],
-                        abs((float)h_pred[i] - (float)h_ref[i]),
-                        abs((float)h_pred[i] - (float)h_ref[i]) / (abs((float)h_ref[i]) + 1e-6f) * 100.f);
+                   i,
+                   (float)h_pred[i],
+                   (float)h_ref[i],
+                   abs((float)h_pred[i] - (float)h_ref[i]),
+                   abs((float)h_pred[i] - (float)h_ref[i]) / (abs((float)h_ref[i]) + 1e-6f) * 100.f);
         }
         if ((float)h_pred[i] == 0) {
             continue;
