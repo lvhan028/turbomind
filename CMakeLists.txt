@@ -17,6 +17,11 @@ project(TurboMind LANGUAGES CXX CUDA)
 
 find_package(CUDA 11.4 REQUIRED)
 
+if(${CUDA_VERSION_MAJOR} VERSION_GREATER_EQUAL "11")
+  add_definitions("-DENABLE_BF16")
+  message("CUDA_VERSION ${CUDA_VERSION_MAJOR}.${CUDA_VERSION_MINOR} is greater or equal than 11.0, enable -DENABLE_BF16 flag")
+endif()
+
 option(BUILD_TEST "Build tests" OFF)
 
 include(FetchContent)

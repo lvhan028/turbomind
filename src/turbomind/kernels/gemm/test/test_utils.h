@@ -2,7 +2,7 @@
 
 #pragma once
 
-#include "src/turbomind/macro.h"
+#include "src/turbomind/utils/macro.h"
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 #include <memory>

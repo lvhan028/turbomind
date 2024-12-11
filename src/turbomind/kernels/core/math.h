@@ -4,11 +4,19 @@
 
 #include "src/turbomind/kernels/core/common.h"
 #include <cassert>
+#include <cstdint>
+#include <type_traits>
 
 namespace turbomind {
 
 template<class T>
 TM_HOST_DEVICE constexpr T ceil_div(T a, T b)
+{
+    return (a + b - 1) / b;
+}
+
+template<class T>
+TM_HOST_DEVICE constexpr T cdiv(T a, T b)
 {
     return (a + b - 1) / b;
 }
