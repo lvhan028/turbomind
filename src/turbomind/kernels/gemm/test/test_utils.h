@@ -2,9 +2,11 @@
 
 #pragma once
 
-#include "src/turbomind/utils/macro.h"
+#include "src/turbomind/macro.h"
 #include <cuda_fp16.h>
+#include <cuda_runtime.h>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace turbomind {

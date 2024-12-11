@@ -8,7 +8,6 @@
 #include <iostream>
 #include <map>
 #include <memory>
-#include <mutex>
 #include <ostream>
 #include <sstream>
 #include <vector>
@@ -35,6 +34,9 @@ static inline decltype(auto) as_tuple(const KernelDesc& d)
                     d.order_a,
                     d.order_b,
                     d.order_c,
+                    d.striding_a,
+                    d.striding_b,
+                    d.striding_c,
                     d.pack_a,
                     d.pack_b,
                     d.pack_u,
@@ -48,7 +50,8 @@ static inline decltype(auto) as_tuple(const KernelDesc& d)
                     d.align,
                     d.c_tile,
                     d.stages,
-                    d.split_k);
+                    d.split_k,
+                    d.sched);
 }
 
 static inline bool operator==(const QuantDesc& a, const QuantDesc& b)
@@ -93,6 +96,9 @@ void ExportDispatchCache(std::ostream& os, const std::vector<std::pair<GemmDesc,
                     g.order_a,
                     g.order_b,
                     g.order_c,
+                    g.striding_a,
+                    g.striding_b,
+                    g.striding_c,
                     g.pack_a,
                     g.pack_b,
                     g.pack_u,
@@ -102,15 +108,20 @@ void ExportDispatchCache(std::ostream& os, const std::vector<std::pair<GemmDesc,
                     g.quant_b.type,
                     g.quant_b.group_size,
                     g.epilogue,
+                    g.batch_dim,
+                    g.sched,
                     g.m,
                     g.n,
                     g.k,
-                    g.batch_dim);
+                    g.num);
         // Kernel desc
         auto& k = spec.kernel->desc();
         export_impl(os,
                     k.arch,
                     k.op_class,
+                    k.striding_a,
+                    k.striding_b,
+                    k.striding_c,
                     k.cta_tile.x,
                     k.cta_tile.y,
                     k.cta_tile.z,
@@ -149,6 +160,9 @@ void ImportDispatchCache(std::istream&                                 is,
                     g.order_a,
                     g.order_b,
                     g.order_c,
+                    g.striding_a,
+                    g.striding_b,
+                    g.striding_c,
                     g.pack_a,
                     g.pack_b,
                     g.pack_u,
@@ -158,10 +172,12 @@ void ImportDispatchCache(std::istream&                                 is,
                     g.quant_b.type,
                     g.quant_b.group_size,
                     g.epilogue,
+                    g.batch_dim,
+                    g.sched,
                     g.m,
                     g.n,
                     g.k,
-                    g.batch_dim);
+                    g.num);
         KernelDesc k{};
         k.type_a  = g.type_a;
         k.type_b  = g.type_b;
@@ -175,9 +191,13 @@ void ImportDispatchCache(std::istream&                                 is,
         k.order_c = g.order_c;
         k.quant_a = g.quant_a;
         k.quant_b = g.quant_b;
+        k.sched   = g.sched;
         import_impl(ss,
                     k.arch,
                     k.op_class,
+                    k.striding_a,
+                    k.striding_b,
+                    k.striding_c,
                     k.cta_tile.x,
                     k.cta_tile.y,
                     k.cta_tile.z,
@@ -221,6 +241,9 @@ inline decltype(auto) as_tuple(const GemmDesc& d)
                     d.order_a,
                     d.order_b,
                     d.order_c,
+                    d.striding_a,
+                    d.striding_b,
+                    d.striding_c,
                     d.pack_a,
                     d.pack_b,
                     d.pack_u,
@@ -229,11 +252,13 @@ inline decltype(auto) as_tuple(const GemmDesc& d)
                     d.quant_a.group_size,
                     d.quant_b.type,
                     d.quant_b.group_size,
+                    d.batch_dim,
+                    d.sched,
                     d.m,
                     d.n,
                     d.k,
-                    d.batch_dim);
-    // d.epilogue
+                    d.num);
+    // Note: `d.epilogue` is not used yet
 }
 
 }  // namespace
@@ -262,15 +287,14 @@ struct DispatchCache::Impl {
 
     const std::vector<Kernel*> kernels_;
     std::map<GemmDesc, Flat>   cache_;
-    mutable std::mutex         mutex_;
 
     Impl(std::vector<Kernel*> kernels): kernels_(std::move(kernels)) {}
 
     std::optional<LaunchSpec> Find(GemmDesc desc, bool exact) const
     {
-        std::lock_guard<std::mutex> lock(mutex_);
-        const int                   batch_size = extract_batch_size(desc);
-        // std::cerr << batch_size << " " << desc.m << " " << desc.n << " " << desc.k << "\n";
+        const int batch_size = extract_batch_size(desc);
+        // std::cerr << batch_size << " " << desc.m << " " << desc.n << " " << desc.k << " " << std::boolalpha << exact
+        //           << "\n";
         const auto it = cache_.find(desc);
         if (it != cache_.end()) {
             const auto& [idxs, specs] = it->second;
@@ -279,8 +303,9 @@ struct DispatchCache::Impl {
                 std::lower_bound(idxs.begin(), idxs.end(), std::make_pair(batch_size, 0), [](auto& a, auto& b) {  //
                     return a.first < b.first;
                 });
-            // std::cerr << p->first << " " << p->second << "\n";
+            // std::cout << it->second.specs.size() << std::endl;
             if (p != idxs.end() && (!exact || p->first == batch_size)) {
+                // std::cerr << p->first << " " << p->second << "\n";
                 return specs[p->second];
             }
         }
@@ -289,8 +314,7 @@ struct DispatchCache::Impl {
 
     bool Insert(GemmDesc desc, const LaunchSpec& spec)
     {
-        std::lock_guard<std::mutex> lock(mutex_);
-        const int                   batch_size = extract_batch_size(desc);
+        const int batch_size = extract_batch_size(desc);
 
         auto it = cache_.find(desc);
         if (it == cache_.end()) {
@@ -314,7 +338,6 @@ struct DispatchCache::Impl {
 
     int Export(std::ostream& os) const
     {
-        std::lock_guard<std::mutex>                  lock(mutex_);
         std::vector<std::pair<GemmDesc, LaunchSpec>> entries;
         for (const auto& [desc, flat] : cache_) {
             auto tmp = desc;
@@ -330,7 +353,6 @@ struct DispatchCache::Impl {
 
     int Import(std::istream& is)
     {
-        std::lock_guard<std::mutex>                  lock(mutex_);
         std::vector<std::pair<GemmDesc, LaunchSpec>> entries;
         ImportDispatchCache(is, entries, kernels_);
         Summary(entries);
@@ -348,11 +370,9 @@ struct DispatchCache::Impl {
         // Sort indices and deduplicate
         for (auto& [desc, flat] : cache_) {
             auto& [idxs, specs] = flat;
-            const auto cmp      = [](auto& a, auto& b) {  //
-                return a.first < b.first;
-            };
-            std::stable_sort(idxs.begin(), idxs.end(), cmp);
-            idxs.erase(std::unique(idxs.begin(), idxs.end(), cmp), idxs.end());
+            std::stable_sort(idxs.begin(), idxs.end(), [](auto a, auto b) { return a.first < b.first; });
+            idxs.erase(std::unique(idxs.begin(), idxs.end(), [](auto a, auto b) { return a.first == b.first; }),
+                       idxs.end());
             // Remove unreferenced specs and update spec indices
             std::vector<LaunchSpec> tmp;
             for (auto& [key, val] : idxs) {
@@ -367,8 +387,7 @@ struct DispatchCache::Impl {
     // Print a summary of how many cases a kernel is used
     void Summary(const std::vector<std::pair<GemmDesc, LaunchSpec>>& entries) const
     {
-        std::lock_guard<std::mutex> lock(mutex_);
-        std::vector<Kernel*>        uses{nullptr};
+        std::vector<Kernel*> uses{nullptr};
         std::copy(kernels_.begin(), kernels_.end(), std::back_inserter(uses));
 
         for (const auto& [_, s] : entries) {

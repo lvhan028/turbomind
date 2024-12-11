@@ -18,11 +18,6 @@ public:
 
     ~Gemm();
 
-    Gemm(Gemm&& other);
-    Gemm& operator    =(Gemm&& other);
-    Gemm(const Gemm&) = delete;
-    Gemm& operator=(const Gemm&) = delete;
-
     [[nodiscard]] int Run(const Operation&    operation,
                           float               alpha,
                           const void*         A,
@@ -52,9 +47,11 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
-[[nodiscard]] int
-Convert(const void* S, const MatrixLayout& Sdesc, void* D, const MatrixLayout& Ddesc, cudaStream_t stream);
+[[nodiscard]] int Convert(const void* S, const MatrixLayout& Sdesc, void* D, MatrixLayout& Ddesc, cudaStream_t stream);
 
-std::tuple<Order, Pack, Order, Pack> get_weight_and_scales_layout(int sm, bool force_simt);
+std::tuple<Order, Pack, Order, Pack>
+get_weight_and_scales_layout(DataType dtype, bool is_fused_moe, int sm, bool force_simt);
+
+void* make_blocked_ptrs(const std::vector<std::pair<void*, int>>& ptrs, cudaStream_t stream);
 
 }  // namespace turbomind::gemm

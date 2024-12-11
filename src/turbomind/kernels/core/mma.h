@@ -5,7 +5,6 @@
 #include "src/turbomind/kernels/core/array.h"
 #include "src/turbomind/kernels/core/common.h"
 #include <cassert>
-#include <cuda_bf16.h>
 
 namespace turbomind {
 
