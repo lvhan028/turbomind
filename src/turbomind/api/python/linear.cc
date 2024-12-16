@@ -65,9 +65,13 @@ struct Linear::Impl {
         const auto workspace_size = input_dims_ * output_dims_ * sizeof(uint16_t);
         void*      workspace{};
         check_cuda_error(cudaMalloc((void**)&workspace, workspace_size));
-
-        convert_qweight(workspace, qweight, input_dims_, output_dims_, simt);
-        convert_scales_zeros(workspace, scales, qzeros, input_dims_, output_dims_, group_size_, simt);
+        if (w_bit_ == 4) {
+            convert_qweight_u4(workspace, qweight, input_dims_, output_dims_, simt);
+            convert_scales_zeros_u4(workspace, scales, qzeros, input_dims_, output_dims_, group_size_, simt);
+        }
+        else {
+            throw std::invalid_argument("unsupported weight bit width");
+        }
 
         check_cuda_error(cudaFree(workspace));
     }
@@ -122,11 +126,13 @@ struct Linear::Impl {
             std::abort();
         }
     }
-    void convert_qweight(
+    void convert_qweight_u4(
         void* workspace, std::shared_ptr<Tensor> weight, size_t input_dims, size_t output_dims, bool use_simt)
     {
         using namespace gemm;
-        auto [order_b, pack_b, order_v, pack_v] = get_weight_and_scales_layout(getSMVersion(), use_simt);
+
+        auto [order_b, pack_b, order_v, pack_v] =
+            get_weight_and_scales_layout(gemm::DataType::U4, false, getSMVersion(), use_simt);
 
         if (order_b == kColMajor) {
             transpose_u4((uint4_t*)workspace, (const uint4_t*)weight->data, input_dims, output_dims);
@@ -188,13 +194,13 @@ struct Linear::Impl {
         weight_ = weight;
     }
 
-    void convert_scales_zeros(void*         workspace,
-                              const Tensor& scales,
-                              const Tensor& qzeros,
-                              size_t        input_dims,
-                              size_t        output_dims,
-                              int           group_size,
-                              bool          use_simt)
+    void convert_scales_zeros_u4(void*         workspace,
+                                 const Tensor& scales,
+                                 const Tensor& qzeros,
+                                 size_t        input_dims,
+                                 size_t        output_dims,
+                                 int           group_size,
+                                 bool          use_simt)
     {
         if constexpr (0) {
             std::cout << "scales: " << std::endl;
@@ -233,7 +239,8 @@ struct Linear::Impl {
         const auto scale_count = input_dims / group_size * output_dims;
 
         using namespace gemm;
-        auto [order_b, pack_b, order_v, pack_v] = get_weight_and_scales_layout(getSMVersion(), use_simt);
+        auto [order_b, pack_b, order_v, pack_v] =
+            get_weight_and_scales_layout(gemm::DataType::U4, false, getSMVersion(), use_simt);
 
         fuse_scales_and_zeros((half*)workspace, (const half*)scales.data, (half*)qzeros.data, scale_count);
         sync_check_cuda_error();
